@@ -1,6 +1,9 @@
-streamlit>=1.36
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
 transformers==4.44.2
-torch       # CPU build installs on Streamlit Cloud (no CUDA there)
+sentencepiece
 pydantic==2.8.2
 pandas==2.2.2
-python-docx==1.1.2
+python-docx
+streamlit
+
