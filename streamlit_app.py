@@ -1,12 +1,12 @@
 import json
 from typing import Optional, List, Dict, Any, Union
-from dataclasses import dataclass
+from io import BytesIO
 
 import streamlit as st
 import pandas as pd
-from io import BytesIO
 from docx import Document
 
+import os
 import torch
 from transformers import pipeline
 
@@ -23,7 +23,7 @@ NORMALS = {
 
 def lab_flagger(labs_json: str) -> Dict[str, Any]:
     try:
-        labs = json.loads(labs_json)
+        labs = _loads_json(labs_json)
         if not isinstance(labs, list):
             return {"flags": [{"error": "Input must be a JSON list of lab dicts."}]}
         flags = []
@@ -41,22 +41,22 @@ def lab_flagger(labs_json: str) -> Dict[str, Any]:
 
 def eligibility_check(criteria_json: str, patient_json: str) -> Dict[str, Any]:
     try:
-        crit = json.loads(criteria_json)
-        pat  = json.loads(patient_json)
+        crit = _loads_json(criteria_json)
+        pat  = _loads_json(patient_json)
 
         age = (
             pat.get("demographics", {}).get("age_years")
             or pat.get("demographics", {}).get("age")
         )
         ok = True
-        reasons = []
+        reasons: List[str] = []
 
         if crit.get("age_min") is not None and (age is None or age < crit["age_min"]):
             ok, reasons = False, reasons + [f"Age < {crit['age_min']}"]
         if crit.get("age_max") is not None and (age is None or age > crit["age_max"]):
             ok, reasons = False, reasons + [f"Age > {crit['age_max']}"]
 
-        req = set([c.lower() for c in crit.get("required_active_conditions", [])])
+        req = {c.lower() for c in crit.get("required_active_conditions", [])}
         if req:
             actives = {
                 (c.get("description") or "").lower()
@@ -65,32 +65,42 @@ def eligibility_check(criteria_json: str, patient_json: str) -> Dict[str, Any]:
             }
             missing = req - actives
             if missing:
-                ok, reasons = False, reasons + [f"Missing active conditions: {sorted(list(missing))}"]
+                ok, reasons = False, reasons + [f"Missing active conditions: {sorted(missing)}"]
 
-        excl = set([c.lower() for c in crit.get("excluded_conditions", [])])
+        excl = {c.lower() for c in crit.get("excluded_conditions", [])}
         if excl:
             present = {
                 (c.get("description") or "").lower()
                 for c in pat.get("conditions", [])
             } & excl
             if present:
-                ok, reasons = False, reasons + [f"Has excluded conditions: {sorted(list(present))}"]
+                ok, reasons = False, reasons + [f"Has excluded conditions: {sorted(present)}"]
 
         return {"eligible": ok, "reasons": reasons}
     except Exception as e:
         return {"eligible": None, "reasons": [str(e)]}
 
 # -----------------------------
+#  JSON helpers
+# -----------------------------
+
+def _loads_json(text: str):
+    """More tolerant json.loads: strips BOM/whitespace and smart quotes."""
+    if text is None:
+        raise ValueError("Empty JSON")
+    txt = str(text).strip().replace("“", '"').replace("”", '"').replace("’", "'")
+    return json.loads(txt)
+
+# -----------------------------
 #  LLM Setup (FLAN-T5)
 # -----------------------------
 
 @st.cache_resource(show_spinner=True)
-def load_pipe(model_name: str = "google/flan-t5-base"):
+def load_pipe(model_name: str):
     device = 0 if torch.cuda.is_available() else -1  # Streamlit Cloud: CPU -> -1
     return pipeline("text2text-generation", model=model_name, device=device)
 
 def build_patient_prompt(data: Dict[str, Any]) -> str:
-    # clip list lengths to keep prompt small
     conds = (data.get("conditions") or [])[:5]
     d = {
         "patient_id": data.get("patient_id"),
@@ -119,7 +129,6 @@ Now write the patient message in the same style (no headings, no lists):
 
 def build_trial_prompt(data: Dict[str, Any]) -> str:
     d = dict(data)
-    # clip sequences
     for k in ["visits", "medications", "labs", "adverse_events"]:
         if isinstance(d.get(k), list):
             d[k] = d[k][:5]
@@ -141,7 +150,6 @@ def detect_kind(payload: Dict[str, Any]) -> str:
 
 def clean_narrative(txt: str) -> str:
     txt = txt.strip()
-    # Guarantee the required closing line for patient-facing messages
     if not txt.endswith("Contact your care team if symptoms change."):
         if not txt.endswith("."):
             txt += "."
@@ -150,12 +158,11 @@ def clean_narrative(txt: str) -> str:
 
 def generate_narrative(pipe, json_str: str) -> str:
     try:
-        payload = json.loads(json_str)
+        payload = _loads_json(json_str)
 
-        # If user pasted a list by mistake, route to lab flagger
+        # If a JSON LIST was pasted by mistake, route to lab flagger
         if isinstance(payload, list):
-            flags = lab_flagger(json_str)
-            return json.dumps(flags, indent=2)
+            return json.dumps(lab_flagger(json_str), indent=2)
 
         kind = detect_kind(payload)
         prompt = build_trial_prompt(payload) if kind == "oncology" else build_patient_prompt(payload)
@@ -199,14 +206,16 @@ st.title("🩺 Clinical Trial Ops Assistant (FLAN-T5)")
 
 with st.sidebar:
     st.subheader("Model")
+    default_model = os.getenv("MODEL_NAME", "google/flan-t5-base")
     model_choice = st.selectbox(
         "Choose model (Cloud: start with base)",
         ["google/flan-t5-base", "google/flan-t5-small", "google/flan-t5-large"],
-        index=0,
-        help="Streamlit Cloud has limited RAM/CPU; 'base' is a safe default."
+        index=["google/flan-t5-base", "google/flan-t5-small", "google/flan-t5-large"].index(default_model)
+        if default_model in {"google/flan-t5-base","google/flan-t5-small","google/flan-t5-large"} else 0,
+        help="Streamlit Cloud has limited RAM/CPU; 'base' is a safe default.",
     )
     pipe = load_pipe(model_choice)
-    st.caption("Loaded. (Cloud runs CPU; local machines with CUDA use GPU automatically.)")
+    st.caption("Loaded. (Cloud runs CPU; local CUDA uses GPU automatically.)")
 
 tabs = st.tabs(["Narrative", "Eligibility", "Lab flags", "Batch"])
 
@@ -222,9 +231,19 @@ with tabs[0]:
     if st.button("Generate narrative"):
         output = generate_narrative(pipe, payload_in)
         st.write(output)
+        # pick a title with real patient id if possible
+        try:
+            pid = _loads_json(payload_in).get("patient_id", "Patient")
+        except Exception:
+            pid = "Patient"
         if not output.startswith("[Narrative error]") and output.strip():
-            docx_bytes = narrative_to_docx(output, title=f"Narrative {example_payload['patient_id']}")
-            st.download_button("Download DOCX", data=docx_bytes, file_name="narrative.docx", mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+            docx_bytes = narrative_to_docx(output, title=f"Narrative {pid}")
+            st.download_button(
+                "Download DOCX",
+                data=docx_bytes,
+                file_name=f"narrative_{pid}.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
 
 # ---- Eligibility tab ----
 with tabs[1]:
@@ -251,7 +270,7 @@ with tabs[2]:
         st.json(flags)
         # Simple chart for numeric values
         try:
-            data = json.loads(labs_in)
+            data = _loads_json(labs_in)
             if isinstance(data, list) and data:
                 dfv = pd.DataFrame([{"test": d.get("test"), "value": d.get("value")} for d in data if "value" in d])
                 if not dfv.empty:
@@ -262,19 +281,40 @@ with tabs[2]:
 # ---- Batch tab ----
 with tabs[3]:
     st.markdown("""
-Upload a CSV with columns you have (any subset is okay):
+Upload a CSV with any subset of these columns:
 - **patient_id**
-- **payload_json**  (required for narrative)
+- **payload_json**  (for narrative)
 - **criteria_json** (optional)
 - **patient_json**  (optional; if missing, we’ll reuse payload_json)
 - **labs_json**     (optional)
 """)
+
+    # sample CSV to download
+    sample = pd.DataFrame([
+        {
+            "patient_id": "X001",
+            "payload_json": json.dumps({"patient_id":"X001","demographics":{"age_years":55,"gender":"M"},"conditions":[{"description":"Diabetes","active":True}]}),
+            "criteria_json": "",
+            "patient_json": "",
+            "labs_json": json.dumps([{"test":"Hemoglobin","value":10.8,"unit":"g/dL"}]),
+        },
+        {
+            "patient_id": "A-001",
+            "payload_json": json.dumps({"patient_id":"A-001","demographics":{"sex":"F","age":62},"baseline":{"cancer_type":"Breast cancer","stage":"II"}}),
+            "criteria_json": json.dumps({"age_min":18,"age_max":70}),
+            "patient_json": "",
+            "labs_json": "",
+        },
+    ])
+    st.download_button("Download sample CSV", sample.to_csv(index=False).encode("utf-8"),
+                       file_name="clinical_batch_examples.csv", mime="text/csv")
+
     up = st.file_uploader("Upload CSV", type=["csv"])
     if up is not None:
         df = pd.read_csv(up)
         out_rows = []
         for _, row in df.iterrows():
-            pid = row.get("patient_id", "")
+            pid = (row.get("patient_id") if pd.notna(row.get("patient_id")) else "") or ""
             # Narrative
             narrative = ""
             pj = row.get("payload_json", "")
