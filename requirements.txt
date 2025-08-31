@@ -1,11 +1,9 @@
---index-url https://pypi.org/simple
---extra-index-url https://download.pytorch.org/whl/cpu
-
-torch==2.3.1+cpu
+streamlit==1.36.0
 transformers==4.44.2
-sentencepiece
+tokenizers==0.19.1
+sentencepiece==0.2.0
 pydantic==2.8.2
 pandas==2.2.2
-python-docx
-streamlit==1.36.0
+python-docx==1.1.2
+torch==2.3.1+cpu ; platform_system=="Linux"
 
