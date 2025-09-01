@@ -42,19 +42,21 @@ root/
 ├─ immunizations/ *.csv
 └─ procedures/ *.csv
 
+
 **Key rules**
 - **Dates** → enforce `YYYY-MM-DD`. Invalid → drop or set safe default (`1900-01-01`).
 - **Types** → cast numeric/bool; keep medical codes as strings.
 - **Duplicates** → drop exact dups; when relevant, keep latest by `(id, date)`.
-- **Outputs** → write **Bronze** (raw→parquet) and **Silver** (cleaned) folders for downstream apps.
+- **Outputs** → write **Bronze** (raw → parquet) and **Silver** (cleaned) folders for downstream apps.
 
-**Example (Spark)**
-
-**from pyspark.sql import functions as F
+### Example (Spark)
+```python
+from pyspark.sql import functions as F
 
 DATE_RX = r"\d{4}-\d{2}-\d{2}"
 
-patients_clean = (patients
+patients_clean = (
+    patients
     .withColumn(
         "BIRTHDATE",
         F.when(F.col("BIRTHDATE").rlike(DATE_RX), F.col("BIRTHDATE"))
@@ -63,10 +65,23 @@ patients_clean = (patients
     .dropDuplicates()
 )
 
-conditions_clean = (conditions
+conditions_clean = (
+    conditions
     .filter(F.col("START").rlike(DATE_RX))
     .dropDuplicates()
-)**
+)
+
+import pandas as pd
+
+def fix_date(s: pd.Series) -> pd.Series:
+    ok = s.str.match(r"\d{4}-\d{2}-\d{2}", na=False)
+    return s.where(ok, "1900-01-01")
+
+patients_df["BIRTHDATE"] = fix_date(patients_df["BIRTHDATE"]).astype("string")
+patients_df = patients_df.drop_duplicates()
+
+conditions_df = conditions_df[conditions_df["START"].str.match(r"\d{4}-\d{2}-\d{2}", na=False)]
+conditions_df = conditions_df.drop_duplicates()
 
 **LLM used**
 
