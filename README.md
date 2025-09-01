@@ -49,8 +49,8 @@ root/
 - **Outputs** → write **Bronze** (raw→parquet) and **Silver** (cleaned) folders for downstream apps.
 
 **Example (Spark)**
-```python
-from pyspark.sql import functions as F
+
+**from pyspark.sql import functions as F
 
 DATE_RX = r"\d{4}-\d{2}-\d{2}"
 
@@ -66,7 +66,7 @@ patients_clean = (patients
 conditions_clean = (conditions
     .filter(F.col("START").rlike(DATE_RX))
     .dropDuplicates()
-)
+)**
 
 **LLM used**
 
