@@ -13,6 +13,20 @@ A compact demo that turns clean clinical tables into **structured JSON** and aut
 - **RAG stubs** (placeholders to add protocol/SOP retrieval next)
 
 > **No model training required.** Uses a pre-trained, instruction-tuned LLM (**FLAN-T5**) for controlled generation.
+## Data source
+
+This repo uses **synthetic clinical data** (CSV folders like `patients/`, `conditions/`, `encounters/`, …).
+You can populate `root/` in two ways:
+
+1) **Synthea** synthetic EHR exports (recommended for demos).  
+   - Generate CSV and copy the entity folders into `root/`.
+   - Data are fully synthetic (no PHI) and safe for public demos.
+
+2) **De-identified internal extracts** (for local use only).  
+   - Keep *only* the columns needed by the app (patient_id, demographics, conditions, labs, etc.).
+   - Never commit real or re-identifiable data to version control.
+
+> This project is demonstration-only and not intended for clinical use.
 
 ---
 
