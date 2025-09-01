@@ -16,7 +16,6 @@ A compact demo that turns clean clinical tables into **structured JSON** and aut
 ## Data source
 
 This repo uses **synthetic clinical data** (CSV folders like `patients/`, `conditions/`, `encounters/`, …).
-You can populate `root/` in two ways:
 
 1) **Synthea** synthetic EHR exports (recommended for demos).  
    - Generate CSV and copy the entity folders into `root/`.
@@ -28,8 +27,6 @@ You can populate `root/` in two ways:
 
 > This project is demonstration-only and not intended for clinical use.
 
----
-
 ## 🧱 Project layout
 ├─ streamlit_app.py # Streamlit UI with Narrative / Eligibility / Labs / Batch tabs
 ├─ app.py # (optional) Gradio version of the assistant
@@ -37,8 +34,6 @@ You can populate `root/` in two ways:
 ├─ clinical_batch_examples.csv
 ├─ notebooks/ # (optional) EDA & data-cleaning notes
 └─ data/ # (optional) local pointers to raw CSVs (patients, conditions, etc.)
-
----
 
 ## 🧼 Data cleaning (what this repo demonstrates)
 
