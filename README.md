@@ -68,7 +68,7 @@ conditions_clean = (conditions
     .dropDuplicates()
 )
 
-LLM used
+**LLM used**
 
 Model: google/flan-t5-base (optionally …-large on a strong local GPU)
 
@@ -100,7 +100,7 @@ How to use the app
   "demographics": { "age_years": 55, "gender": "M" },
   "conditions": [{ "description": "Diabetes", "active": true }]
 }
-Under the hood (agentic view)
+**Under the hood (agentic view)**
 
 Tool 1 — Narrative: builds a prompt from JSON and queries FLAN-T5.
 
